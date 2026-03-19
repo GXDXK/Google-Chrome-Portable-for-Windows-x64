@@ -142,7 +142,7 @@ exit
 cls
 echo.
 echo ==============================================
-echo Google Chrome ±„–Ø∞Ê(x64) for Windows
+echo Google Chrome Portable for Windows(x64)
 echo.
 echo π§æﬂ£∫
 echo Chrome++ Next 1.15.1 + Set DLL 2.0.0

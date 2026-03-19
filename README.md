@@ -1,4 +1,4 @@
-# Google Chrome Portable
+# Google Chrome Portable for Windows(x64)
 
 ## 使用方法
 
