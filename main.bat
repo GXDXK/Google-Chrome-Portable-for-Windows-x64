@@ -165,7 +165,7 @@ echo ====================================================
 echo        Google Chrome Portable for Windows(x64)
 echo ====================================================
 echo   ¹¤¾ß£º
-echo   Chrome++ Next 1.15.1 + Set DLL 2.0.0
+echo   Chrome++ Next 1.16.0 + Set DLL 2.0.0
 echo   https://github.com/Bush2021/chrome_plus/releases
 echo.
 echo   GNU Wget 1.21.4 for Windows
