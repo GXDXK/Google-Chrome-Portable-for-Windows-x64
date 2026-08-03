@@ -10,14 +10,13 @@
 #    4. 更新 Chrome++ Next（下载 release 的 setdll.7z → 更新 Tool\chrome_plus 目录）
 #    5. 一键检查并更新两者
 #
-#  启动方式：双击 ChromePlusUpdater.bat
+#  启动方式：双击 ChromePlusUpdater.vbs（推荐，无终端窗口）或 ChromePlusUpdater.bat
 #  命令行：  powershell -NoProfile -ExecutionPolicy Bypass -STA -File ChromePlusUpdater.ps1
 #  测试模式：powershell -NoProfile -File ChromePlusUpdater.ps1 -Test
 # =====================================================================
 
 param(
-    [switch]$Test,      # 命令行测试模式（不启动 GUI，直接检查一次并输出结果）
-    [switch]$GuiSmoke   # GUI 冒烟测试（启动界面后 2.5 秒自动关闭，用于验证界面可正常构建）
+    [switch]$Test       # 命令行测试模式（不启动 GUI，直接检查一次并输出结果）
 )
 
 # 让进程启用系统 DPI 感知并立即隐藏控制台窗口：
@@ -327,12 +326,13 @@ function Invoke-WgetDownload {
             $line = $proc.StandardError.ReadLine()
             if ($line) { Update-WgetProgress $line }
         }
-        while (-not $proc.WaitForExit(200)) {
+        while ($true) {
             if ($script:Shared.Cancel) {
                 Send-Log WARN '正在取消当前操作…'
                 try { $proc.Kill() } catch { }
                 throw '用户取消了操作'
             }
+            if ($proc.WaitForExit(200)) { break }
         }
     } finally {
         $script:Shared.CurrentProcess = $null
@@ -372,12 +372,13 @@ function Invoke-ToolProcess {
     $outTask = $proc.StandardOutput.ReadToEndAsync()
     $errTask = $proc.StandardError.ReadToEndAsync()
     try {
-        while (-not $proc.WaitForExit(200)) {
+        while ($true) {
             if ($script:Shared.Cancel) {
                 Send-Log WARN '正在取消当前操作…'
                 try { $proc.Kill() } catch { }
                 throw '用户取消了操作'
             }
+            if ($proc.WaitForExit(200)) { break }
         }
     } finally {
         $script:Shared.CurrentProcess = $null
@@ -452,8 +453,11 @@ function Repair-ToolFiles {
     #   1) wget.exe（优先，供后续下载使用）
     #   2) 7-Zip 工具（7z.exe+7z.dll / 7za.exe / 7zr.exe）
     #   3) Chrome++ Next x64 工具（setdll-x64.exe / version-x64.dll / chrome++.ini）
+    Test-Cancelled
     $okWget = Ensure-Wget
+    Test-Cancelled
     $okZip  = Ensure-SevenZip
+    Test-Cancelled
     $okPlus = Ensure-PlusFiles
     return ($okWget -and $okZip -and $okPlus)
 }
@@ -461,6 +465,7 @@ function Repair-ToolFiles {
 function Ensure-PlusFiles {
     # 确保 Tool\chrome_plus 中的 x64 工具完整（setdll-x64.exe / version-x64.dll / chrome++.ini），
     # 缺失时从 Chrome++ Next 最新 release 的 setdll.7z 恢复（仅保留 x64，不复制 arm64/x86 文件）
+    Test-Cancelled
     $required = @($script:SetDll, $script:VersionDll, $script:DefaultIni)
     $missing = @($required | Where-Object { -not (Test-Path -LiteralPath $_) })
     if ($missing.Count -eq 0) { return $true }
@@ -471,6 +476,7 @@ function Ensure-PlusFiles {
     try {
         $rel = Get-LatestChromePlusVersion
     } catch {
+        if ($script:Shared.Cancel) { throw }
         Send-Log ERR "获取 Chrome++ Next 最新 release 失败：$($_.Exception.Message)"
         return $false
     }
@@ -481,8 +487,10 @@ function Ensure-PlusFiles {
     $pkg = Join-Path $script:TempDir 'setdll.7z'
     try {
         $size = Invoke-Download -Url $rel.AssetUrl -Dest $pkg -MinBytes 10KB -Label "正在下载 setdll.7z（Chrome++ Next $($rel.Version)）"
+        Test-Cancelled
         Send-Log OK ("已下载 setdll.7z（{0}）" -f (Format-FileSize $size))
     } catch {
+        if ($script:Shared.Cancel) { throw }
         Send-Log ERR "setdll.7z 下载失败：$($_.Exception.Message)"
         Remove-TempDir
         return $false
@@ -531,6 +539,7 @@ function Ensure-SevenZip {
     }
     if (Test-Path -LiteralPath $script:SevenZip) { return $true }   # 7za.exe 可用
 
+    Test-Cancelled
     Send-Log WARN '缺少 7-Zip 命令行工具，正在自动获取…'
 
     # 查询最新 release（7zr.exe / extra 包 / x64 安装包共用同一个最新 tag）
@@ -538,6 +547,7 @@ function Ensure-SevenZip {
     try {
         $rel = Invoke-RestMethod -Uri $script:SevenZipApi -Headers @{ 'User-Agent' = 'Chrome-Portable-Updater/1.0' } -TimeoutSec 30
     } catch {
+        if ($script:Shared.Cancel) { throw }
         Send-Log ERR "查询 7-Zip 最新 release 失败：$($_.Exception.Message)"
         return $false
     }
@@ -558,8 +568,10 @@ function Ensure-SevenZip {
         $tmp7zr = Join-Path $script:TempDir '7zr.exe'
         Send-Log INFO '正在下载 7zr.exe（临时引导，仅用于解压 extra 包）…'
         $sz = Invoke-Download -Url $asset7zr.browser_download_url -Dest $tmp7zr -MinBytes 100KB -Label '正在下载 7zr.exe'
+        Test-Cancelled
         Send-Log OK ("已下载 7zr.exe（{0}）" -f (Format-FileSize $sz))
     } catch {
+        if ($script:Shared.Cancel) { throw }
         Send-Log ERR "7zr.exe 下载失败：$($_.Exception.Message)"
         Remove-TempDir
         return $false
@@ -570,6 +582,7 @@ function Ensure-SevenZip {
         $extra = Join-Path $script:TempDir $assetExtra.name
         Send-Log INFO "正在下载 $($assetExtra.name)（含 7za.exe）…"
         $null = Invoke-Download -Url $assetExtra.browser_download_url -Dest $extra -MinBytes 100KB -Label "正在下载 $($assetExtra.name)"
+        Test-Cancelled
         $outDir = Join-Path $script:TempDir '7zip_extra'
         New-Item -ItemType Directory -Force -Path $outDir | Out-Null
         $r = Invoke-ToolProcess $tmp7zr @('x', $extra, ("-o" + $outDir), '-y') '7zr 解压 extra 包'
@@ -586,6 +599,7 @@ function Ensure-SevenZip {
         Remove-Item -LiteralPath $tmp7zr -Force -ErrorAction SilentlyContinue
         Send-Log OK '已获取 7za.exe，临时 7zr.exe 已删除'
     } catch {
+        if ($script:Shared.Cancel) { throw }
         Send-Log ERR "获取 7za.exe 失败：$($_.Exception.Message)"
         Remove-Item -LiteralPath $tmp7zr -Force -ErrorAction SilentlyContinue
         Remove-TempDir
@@ -599,6 +613,7 @@ function Ensure-SevenZip {
         $installer = Join-Path $script:TempDir $assetX64.name
         Send-Log INFO "正在下载 $($assetX64.name)（7-Zip $tag）…"
         $null = Invoke-Download -Url $assetX64.browser_download_url -Dest $installer -MinBytes 500KB -Label "正在下载 $($assetX64.name)"
+        Test-Cancelled
         $outDir = Join-Path $script:TempDir '7zip_full'
         New-Item -ItemType Directory -Force -Path $outDir | Out-Null
         $r = Invoke-ToolProcess $script:SevenZip @('x', $installer, ("-o" + $outDir), '-y') '解压 7-Zip 安装包'
@@ -614,6 +629,7 @@ function Ensure-SevenZip {
         Send-Log OK "已获取完整版 7z.exe + 7z.dll（7-Zip $tag）"
         return $true
     } catch {
+        if ($script:Shared.Cancel) { throw }
         Send-Log ERR "获取完整版 7z.exe + 7z.dll 失败：$($_.Exception.Message)"
         Remove-TempDir
         Send-Log INFO '继续使用已获取的 7za.exe'
@@ -624,19 +640,24 @@ function Ensure-SevenZip {
 function Ensure-Wget {
     # wget.exe 缺失时，用 PowerShell 内置下载器从 eternallybored.org 获取
     if (Test-Path -LiteralPath $script:WgetExe) { return $true }
+    Test-Cancelled
     Send-Log WARN "缺少 wget.exe，正在从 eternallybored.org 下载…"
     try {
         Remove-TempDir
         New-Item -ItemType Directory -Force -Path $script:WgetToolDir, $script:TempDir | Out-Null
         $tmp = Join-Path $script:TempDir 'wget.exe'
+        Test-Cancelled
         Invoke-WebRequest -Uri $script:WgetUrl -OutFile $tmp -UseBasicParsing -TimeoutSec 120
+        Test-Cancelled
         $size = (Get-Item -LiteralPath $tmp -ErrorAction SilentlyContinue).Length
         if ($size -lt 1MB) { throw "下载的 wget.exe 不完整（$size 字节）" }
+        Test-Cancelled
         Copy-Item -LiteralPath $tmp -Destination $script:WgetExe -Force
         Remove-TempDir
         Send-Log OK ("已下载 wget.exe（{0}）" -f (Format-FileSize $size))
         return $true
     } catch {
+        if ($script:Shared.Cancel) { throw }
         Send-Log ERR "wget.exe 下载失败：$($_.Exception.Message)"
         Remove-TempDir
         return $false
@@ -994,7 +1015,8 @@ function Refresh-VersionPanel {
 function Set-UiBusy {
     param([bool]$Busy)
     $script:IsBusy = $Busy
-    foreach ($b in $script:ActionButtons) { $b.Enabled = -not $Busy }
+    # 注意：不要通过禁用按钮来标识忙碌——禁用状态会让 Flat 按钮文字渲染成深色/黑色。
+    # 忙碌状态由进度条、状态栏和“取消”按钮体现；重复点击由 IsBusy 守卫拦截。
     $script:BtnCancel.Visible = $Busy
     $script:Progress.Visible = $Busy
     if ($Busy) {
@@ -1022,9 +1044,13 @@ function Invoke-WorkerEntry {
         # 成功后清理临时目录
         Remove-TempDir
     } catch {
-        Send-Log ERR ('操作失败：' + $_.Exception.Message)
-        if (Test-Path -LiteralPath $script:TempDir) {
-        Send-Log WARN "临时文件已保留在 $($script:TempDir)，便于排查"
+        if ($script:Shared.Cancel) {
+            Send-Log WARN '操作已取消'
+        } else {
+            Send-Log ERR ('操作失败：' + $_.Exception.Message)
+            if (Test-Path -LiteralPath $script:TempDir) {
+                Send-Log WARN "临时文件已保留在 $($script:TempDir)，便于排查"
+            }
         }
     }
 }
@@ -1088,8 +1114,6 @@ function Start-Worker {
 }
 
 function Start-Gui {
-    param([int]$AutoCloseMs = 0)
-
     # 计算界面缩放比例（按系统 DPI，仅在进程为 DPI 感知时生效；
     # DPI 感知下字体按点渲染会自动随 DPI 放大，这里同步放大控件坐标与尺寸）
     $script:UIScale = 1.0
@@ -1221,7 +1245,6 @@ function Start-Gui {
     foreach ($b in @($btnCheck, $btnOneClick, $btnChrome, $btnPlus, $btnRun, $btnOpen, $btnIni, $btnCancel)) {
         Add-Control $form $b
     }
-    $script:ActionButtons = @($btnCheck, $btnOneClick, $btnChrome, $btnPlus, $btnRun, $btnOpen, $btnIni)
     $script:BtnOneClick = $btnOneClick
     $script:BtnCancel = $btnCancel
     $script:Form = $form
@@ -1476,16 +1499,6 @@ function Start-Gui {
         Add-LogLine 'INFO' '点击「检查更新」查询最新版本，或直接点击「一键更新 / 一键构建」。'
     })
 
-    if ($AutoCloseMs -gt 0) {
-        $closeTimer = New-Object System.Windows.Forms.Timer
-        $closeTimer.Interval = $AutoCloseMs
-        $closeTimer.Add_Tick({
-            $this.Stop()
-            $script:Form.Close()
-        })
-        $closeTimer.Start()
-    }
-
     [System.Windows.Forms.Application]::EnableVisualStyles()
     # 捕获 UI 线程未处理异常，弹出友好提示而不是 JIT 调试框
     try {
@@ -1537,10 +1550,6 @@ if ($script:WorkerMode) {
 }
 if ($Test) {
     Invoke-TestMode
-    exit
-}
-if ($GuiSmoke) {
-    Start-Gui -AutoCloseMs 2500
     exit
 }
 if ($MyInvocation.InvocationName -ne '.') {
