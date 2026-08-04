@@ -1,6 +1,10 @@
 # Chrome 便携版更新器
 
-检查并更新 **Google Chrome 便携版** 与 **Chrome++ Next 增强插件**，显示两者的版本号。首次运行时 Tool 中的工具会自动下载，仅需一个 exe 即可完成全部构建与更新。
+检查并更新 **Google Chrome 便携版** 与 [**Chrome++ Next**](https://github.com/Bush2021/chrome_plus)，显示两者的版本号。首次运行时 Tool 中的工具会自动下载，仅需一个 exe 即可完成全部构建与更新。
+
+## 本项目由 AI 完成
+
+本项目的脚本由 Codex + DeepSeek-V4-Flash-0731 编写。
 
 ## 项目结构
 
