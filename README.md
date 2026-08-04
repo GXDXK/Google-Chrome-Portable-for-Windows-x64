@@ -1,14 +1,40 @@
 # Chrome 便携版更新器
 
-检查并更新 **Google Chrome 便携版** 与 **Chrome++ Next 增强插件**，显示两者的版本号。仅需 `ChromePlusUpdater.bat` + `ChromePlusUpdater.ps1` 两个文件即可完成全部构建与更新（Tool 中的工具缺失时会自动下载）。
+检查并更新 **Google Chrome 便携版** 与 **Chrome++ Next 增强插件**，显示两者的版本号。首次运行时 Tool 中的工具会自动下载，仅需一个 exe 即可完成全部构建与更新。
 
-## 本项目由 AI 完成
+## 项目结构
 
-本项目使用 Codex + DeepSeek-V4-Flash-0731 完成项目编写。
+```text
+项目根目录\
+  ChromePlusUpdater.ps1     主程序（引擎本体，update_check.xml 已内置）
+  Launch.vbs                启动器（wscript 无控制台，避免终端窗口；双击即可使用）
+  README.md
+  Build_exe\
+    Launcher.cs             exe 的 C# 源码（重新生成 exe 时必需）
+    build_exe.bat           重新生成 exe 的编译脚本（使用系统自带 csc.exe）
+```
+
+`ChromePlusUpdater.exe` 不随项目存放：运行 `Build_exe\build_exe.bat` 后会生成到项目根目录（与 `ChromePlusUpdater.ps1` 同级）。
+
+运行后会在项目根目录自动生成：
+
+```text
+  Tool\7-Zip\       7-Zip 工具（7z.exe + 7z.dll 完整版，7za.exe 兜底；缺失自动下载）
+  Tool\chrome_plus\ Chrome++ Next x64 工具（setdll-x64.exe / version-x64.dll / chrome++.ini）
+  Tool\Wget\        wget.exe（缺失自动下载）
+  App\              构建出的便携版 Chrome（运行目录）
+  Temp\             临时目录（下载与解压均在此进行，任务完成后自动删除）
+```
 
 ## 使用方式
 
-双击 `ChromePlusUpdater.vbs` 或 `ChromePlusUpdater.bat` 即可启动（首次启动时如果杀毒软件询问，请放行；脚本本身不联网之外的任何写入）。启动器通过 wscript 以隐藏方式启动 PowerShell，不会出现黑色终端框 / Windows Terminal 窗口。需要联网访问 Google 更新服务和 GitHub。
+双击项目根目录下的 `Launch.vbs` 即可启动（wscript 无控制台，不出现黑色终端框 / Windows Terminal 窗口）。也可以运行 `Build_exe\build_exe.bat` 生成单文件 exe 后双击，或直接运行：
+
+```text
+powershell -NoProfile -ExecutionPolicy Bypass -STA -File ChromePlusUpdater.ps1
+```
+
+需要联网访问 Google 更新服务和 GitHub。
 
 界面按钮：
 
@@ -28,6 +54,11 @@
 - Chrome：`App\chrome.exe` 的 `ProductVersion`；最新版本通过 Google `update2` API 查询（`update_check.xml` 已硬编码进脚本）。
 - Chrome++ Next：`Tool\chrome_plus\version-x64.dll` 的 `ProductVersion`（与 `FileVersion` 相同）；最新版本通过 GitHub Releases API 查询 `Bush2021/chrome_plus`，下载其 `setdll.7z`。
 
+下载与取消：
+
+- 下载时界面会实时显示百分比、速度与剩余时间（状态栏 + 进度条）；
+- 点击“取消”会立即停止当前下载/操作，不再继续后续步骤，日志输出“操作已取消”，临时目录也会被清理。
+
 ## 更新逻辑
 
 ### Chrome 更新
@@ -44,19 +75,6 @@
 2. 覆盖更新 `Tool\chrome_plus` 目录中的 x64 工具：`setdll-x64.exe`、`version-x64.dll`、`chrome++.ini`（默认配置，不保留 arm64/x86 版本）；
 3. 同步 `App\version-x64.dll`（**不覆盖** `App\chrome++.ini` 中的用户配置）。
 
-## 文件说明
-
-```text
-ChromePlusUpdater.ps1   主程序（GUI，兼容 Windows PowerShell 5.1 与 PowerShell 7，update_check.xml 已内置）
-ChromePlusUpdater.bat   启动器（用隐藏窗口的方式启动，避免弹出终端）
-ChromePlusUpdater.vbs   推荐启动器（wscript 无控制台，彻底避免终端窗口闪现）
-Tool\7-Zip\             7-Zip 工具（7z.exe + 7z.dll 完整版，7za.exe 兜底；7zr.exe 仅作临时引导、用后即删）
-Tool\chrome_plus\       Chrome++ Next x64 工具（setdll-x64.exe / version-x64.dll / chrome++.ini）
-Tool\Wget\              wget.exe（缺失时自动从 eternallybored.org 下载）
-App\                    构建出的便携版 Chrome（运行目录）
-Temp\                   临时目录（所有下载与解压均在 Temp 中进行，任务完成后自动删除）
-```
-
 ## 注意事项
 
 - 更新 Chrome 前会自动关闭正在运行的便携版 Chrome；系统安装的 Chrome 不受影响。
@@ -64,4 +82,6 @@ Temp\                   临时目录（所有下载与解压均在 Temp 中进�
     - `wget.exe` —— 从 eternallybored.org 下载；
     - `7z.exe` + `7z.dll`（完整版，支持全部格式）—— 从 [ip7z/7zip release](https://github.com/ip7z/7zip/releases/latest) 动态获取最新版本：临时下载 `7zr.exe` 引导解压 `7z2602-extra.7z` 得到 `7za.exe`（7zr 用后即删），再用 `7za.exe` 解压最新 `7zNNNN-x64.exe` 得到 `7z.exe` + `7z.dll`；
     - `setdll-x64.exe` / `version-x64.dll` / `chrome++.ini` —— 从 [chrome_plus release](https://github.com/Bush2021/chrome_plus/releases/latest) 的 `setdll.7z` 恢复（仅 x64）。
+- **重新生成 exe**：修改 `ChromePlusUpdater.ps1` 后，进入 `Build_exe` 目录运行 `build_exe.bat`，新的 `ChromePlusUpdater.exe` 会生成到**项目根目录**（与 `ChromePlusUpdater.ps1` 同级；脚本读取上级目录的 ps1，`Launcher.cs` 需与脚本同目录）。
+- **exe 的基目录**：exe 与 ps1 同级（项目根）时以项目根为基目录（Tool/App/Temp 生成在项目根）；若把 exe 单独复制到其他位置，则以 exe 所在目录为基目录，保持“复制即用”的便携行为。
 - GitHub API 匿名请求有每小时 60 次的频率限制，短时间内反复“检查更新”可能失败，等待一小时或稍后再试即可。

@@ -6,5 +6,6 @@ Dim shell, fso, scriptDir, ps1
 Set shell = CreateObject("WScript.Shell")
 Set fso = CreateObject("Scripting.FileSystemObject")
 scriptDir = fso.GetParentFolderName(WScript.ScriptFullName)
+' 本文件应与 ChromePlusUpdater.ps1 放在同一目录
 ps1 = scriptDir & "\ChromePlusUpdater.ps1"
 shell.Run "powershell -NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -STA -File """ & ps1 & """", 0, False

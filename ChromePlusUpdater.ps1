@@ -51,7 +51,8 @@ $ErrorActionPreference = 'Stop'
 # 全局配置
 # ---------------------------------------------------------------------
 $script:ScriptPath = $MyInvocation.MyCommand.Path
-$script:BaseDir = if ($script:WorkerBaseDir) { $script:WorkerBaseDir }
+$script:BaseDir = if ($env:CPUP_BASE_DIR) { $env:CPUP_BASE_DIR }
+                  elseif ($script:WorkerBaseDir) { $script:WorkerBaseDir }
                   elseif ($PSScriptRoot) { $PSScriptRoot }
                   else { Split-Path -Parent $MyInvocation.MyCommand.Path }
 $script:ToolDir = Join-Path $script:BaseDir 'Tool'
@@ -395,12 +396,12 @@ function Remove-TempDir {
     # 只允许删除 BaseDir 下的 Temp，防止误删
     $p = $script:TempDir
     if ($p -and $p.StartsWith($script:BaseDir, [System.StringComparison]::OrdinalIgnoreCase) -and (Test-Path -LiteralPath $p)) {
-        for ($i = 0; $i -lt 3; $i++) {
+        for ($i = 0; $i -lt 5; $i++) {
             try {
                 Remove-Item -LiteralPath $p -Recurse -Force -ErrorAction Stop
                 return
             } catch {
-                Start-Sleep -Milliseconds 500
+                Start-Sleep -Milliseconds 600
             }
         }
     }
@@ -1045,6 +1046,8 @@ function Invoke-WorkerEntry {
         Remove-TempDir
     } catch {
         if ($script:Shared.Cancel) {
+            # 用户取消：同样清理临时目录，避免残留
+            Remove-TempDir
             Send-Log WARN '操作已取消'
         } else {
             Send-Log ERR ('操作失败：' + $_.Exception.Message)
@@ -1472,6 +1475,8 @@ function Start-Gui {
 
     # ---------- 启动画面 ----------
     $form.Add_Shown({
+        # 清理上次可能残留的临时目录（如取消或异常退出时）
+        Remove-TempDir
         Refresh-VersionPanel
         Add-LogLine 'INFO' "目录：$($script:BaseDir)"
         Add-LogLine 'INFO' ("本地 Chrome：{0}" -f $(if ($script:ChromeLocal) { $script:ChromeLocal } else { '未安装' }))
@@ -1512,6 +1517,25 @@ function Start-Gui {
         })
     } catch { }
     [void]$form.ShowDialog()
+
+    # 窗口已关闭：等待后台任务收尾（如“取消并退出”时正在进行的清理），确保 Temp 不留残留
+    if ($script:WorkerHandle) {
+        $deadline = (Get-Date).AddSeconds(8)
+        while (-not $script:WorkerHandle.IsCompleted -and (Get-Date) -lt $deadline) {
+            Start-Sleep -Milliseconds 200
+        }
+        try {
+            if ($script:WorkerHandle.IsCompleted) {
+                $null = $script:WorkerPowerShell.EndInvoke($script:WorkerHandle)
+            } else {
+                $script:WorkerPowerShell.Stop()
+            }
+        } catch { }
+        try { $script:WorkerPowerShell.Dispose() } catch { }
+        $script:WorkerPowerShell = $null
+        $script:WorkerHandle = $null
+    }
+    Remove-TempDir
 }
 
 # ---------------------------------------------------------------------
